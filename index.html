@@ -420,7 +420,7 @@
     .event-actions {
       display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
     }
-    .btn-del {
+    .btn-del, .btn-edit {
       width: 28px; height: 28px;
       border-radius: 6px;
       border: 1px solid var(--border);
@@ -431,7 +431,8 @@
       display: flex; align-items: center; justify-content: center;
       transition: all 0.15s;
     }
-    .btn-del:hover { background: var(--red-dim); border-color: rgba(224,85,85,0.4); color: var(--red); }
+    .btn-del:hover  { background: var(--red-dim);  border-color: rgba(224,85,85,0.4);  color: var(--red);  }
+    .btn-edit:hover { background: var(--gold-glow); border-color: var(--gold-dim); color: var(--gold); }
 
     /* ===== BOTTOM FAB (Month view) ===== */
     .fab {
@@ -756,8 +757,8 @@
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-title">
-      <i class="fa-solid fa-calendar-plus"></i>
-      เพิ่มกิจกรรม — <span id="modalDateLabel" style="color:var(--text-muted);font-weight:400"></span>
+      <i class="fa-solid fa-calendar-plus" id="modalIcon"></i>
+      <span id="modalTitleText">เพิ่มกิจกรรม</span> — <span id="modalDateLabel" style="color:var(--text-muted);font-weight:400"></span>
     </div>
 
     <div class="form-group">
@@ -1147,6 +1148,9 @@ function renderEventList() {
         </div>
       </div>
       <div class="event-actions">
+        <button class="btn-edit" data-idx="${idx}" title="แก้ไขกิจกรรม">
+          <i class="fa-solid fa-pen"></i>
+        </button>
         <button class="btn-del" data-idx="${idx}" title="ลบกิจกรรม">
           <i class="fa-solid fa-trash-can"></i>
         </button>
@@ -1154,9 +1158,12 @@ function renderEventList() {
     list.appendChild(card);
   });
 
-  // Delete handlers
+  // Delete & Edit handlers
   list.querySelectorAll('.btn-del').forEach(btn => {
     btn.addEventListener('click', () => deleteEvent(parseInt(btn.dataset.idx)));
+  });
+  list.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => openEditEventModal(parseInt(btn.dataset.idx)));
   });
 }
 
@@ -1176,22 +1183,55 @@ function deleteEvent(idx) {
 }
 
 // ============================================================
-//  MODAL: ADD EVENT
+//  MODAL: ADD / EDIT EVENT
+//  editingIdx = null  → โหมดเพิ่มใหม่
+//  editingIdx = number → โหมดแก้ไข (index ใน array ของวันนั้น)
 // ============================================================
+let editingIdx = null; // track ว่ากำลัง edit event index ไหน
+
 function openAddEventModal() {
+  editingIdx = null;
   const d  = parseDate(selectedDate);
   const lb = d.toLocaleDateString('th-TH', { weekday:'long', month:'long', day:'numeric' });
-  document.getElementById('modalDateLabel').textContent = lb;
-  document.getElementById('evtTitle').value  = '';
-  document.getElementById('evtStart').value  = '';
-  document.getElementById('evtEnd').value    = '';
-  document.getElementById('evtDesc').value   = '';
+  document.getElementById('modalDateLabel').textContent  = lb;
+  document.getElementById('modalTitleText').textContent  = 'เพิ่มกิจกรรม';
+  document.getElementById('modalIcon').className         = 'fa-solid fa-calendar-plus';
+  document.getElementById('btnSaveEvent').innerHTML      = '<i class="fa-solid fa-floppy-disk"></i> บันทึกกิจกรรม';
+  // clear form
+  document.getElementById('evtTitle').value    = '';
+  document.getElementById('evtStart').value    = '';
+  document.getElementById('evtEnd').value      = '';
+  document.getElementById('evtDesc').value     = '';
   document.getElementById('evtNotify').checked = false;
   document.getElementById('eventModal').classList.add('open');
   setTimeout(() => document.getElementById('evtTitle').focus(), 350);
 }
+
+function openEditEventModal(idx) {
+  const events = getEvents(selectedDate);
+  const ev = events[idx];
+  if (!ev) return;
+
+  editingIdx = idx; // จำ index ที่จะแก้ไข
+  const d  = parseDate(selectedDate);
+  const lb = d.toLocaleDateString('th-TH', { weekday:'long', month:'long', day:'numeric' });
+  document.getElementById('modalDateLabel').textContent  = lb;
+  document.getElementById('modalTitleText').textContent  = 'แก้ไขกิจกรรม';
+  document.getElementById('modalIcon').className         = 'fa-solid fa-pen-to-square';
+  document.getElementById('btnSaveEvent').innerHTML      = '<i class="fa-solid fa-floppy-disk"></i> บันทึกการแก้ไข';
+  // โหลดข้อมูลเดิมเข้า form
+  document.getElementById('evtTitle').value    = ev.title  || '';
+  document.getElementById('evtStart').value    = ev.start  || '';
+  document.getElementById('evtEnd').value      = ev.end    || '';
+  document.getElementById('evtDesc').value     = ev.desc   || '';
+  document.getElementById('evtNotify').checked = ev.notify || false;
+  document.getElementById('eventModal').classList.add('open');
+  setTimeout(() => document.getElementById('evtTitle').focus(), 350);
+}
+
 function closeAddEventModal() {
   document.getElementById('eventModal').classList.remove('open');
+  editingIdx = null;
 }
 
 function saveNewEvent() {
@@ -1202,29 +1242,45 @@ function saveNewEvent() {
     setTimeout(() => document.getElementById('evtTitle').style.borderColor = '', 1500);
     return;
   }
-  const ev = {
-    id:     Date.now(),
-    title,
-    start:  document.getElementById('evtStart').value,
-    end:    document.getElementById('evtEnd').value,
-    desc:   document.getElementById('evtDesc').value.trim(),
-    notify: document.getElementById('evtNotify').checked,
-  };
 
   const all = loadEvents();
   if (!all[selectedDate]) all[selectedDate] = [];
-  all[selectedDate].push(ev);
-  saveEvents(all);
 
-  closeAddEventModal();
-  renderMonth();
-  renderDayStrip();
-  renderEventList();
-  showToast('info', 'บันทึกกิจกรรมแล้ว', `"${title}" ถูกเพิ่มในวันที่เลือก`);
-
-  // Schedule browser notification if enabled
-  if (ev.notify && ev.start) {
-    scheduleNotification(ev);
+  if (editingIdx !== null) {
+    // ===== โหมด EDIT: แก้ไข event เดิม =====
+    const old = all[selectedDate][editingIdx] || {};
+    all[selectedDate][editingIdx] = {
+      id:     old.id || Date.now(), // คง id เดิมไว้
+      title,
+      start:  document.getElementById('evtStart').value,
+      end:    document.getElementById('evtEnd').value,
+      desc:   document.getElementById('evtDesc').value.trim(),
+      notify: document.getElementById('evtNotify').checked,
+    };
+    saveEvents(all);
+    closeAddEventModal();
+    renderMonth();
+    renderDayStrip();
+    renderEventList();
+    showToast('info', 'แก้ไขกิจกรรมแล้ว', `"${title}" อัปเดตเรียบร้อย`);
+  } else {
+    // ===== โหมด ADD: เพิ่ม event ใหม่ =====
+    const ev = {
+      id:     Date.now(),
+      title,
+      start:  document.getElementById('evtStart').value,
+      end:    document.getElementById('evtEnd').value,
+      desc:   document.getElementById('evtDesc').value.trim(),
+      notify: document.getElementById('evtNotify').checked,
+    };
+    all[selectedDate].push(ev);
+    saveEvents(all);
+    closeAddEventModal();
+    renderMonth();
+    renderDayStrip();
+    renderEventList();
+    showToast('info', 'บันทึกกิจกรรมแล้ว', `"${title}" ถูกเพิ่มในวันที่เลือก`);
+    if (ev.notify && ev.start) scheduleNotification(ev);
   }
 }
 
